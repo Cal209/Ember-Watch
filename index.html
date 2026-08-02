@@ -1,0 +1,779 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ember Watch — Wildfire Facts, Reports & Response Game</title>
+<meta name="description" content="Learn how wildfires spread, report a fire anonymously on a community map, and play a fire-response simulation.">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+
+<style>
+  :root{
+    --char:#17120f;
+    --char-2:#1f1811;
+    --ember-dim:#3a2415;
+    --ember:#ff5a1f;
+    --amber:#ffb84d;
+    --ash:#8a7d6f;
+    --ash-dim:#544a40;
+    --smoke:#f3ebdd;
+    --danger:#c1272d;
+    --safe:#4caf7d;
+    --display: 'Archivo Black', 'Inter', sans-serif;
+    --body: 'Inter', system-ui, sans-serif;
+    --mono: 'JetBrains Mono', monospace;
+    --radius: 3px;
+  }
+
+  *{box-sizing:border-box;}
+  html{scroll-behavior:smooth;}
+  body{
+    margin:0;
+    background:var(--char);
+    color:var(--smoke);
+    font-family:var(--body);
+    line-height:1.55;
+  }
+  a{color:var(--amber);}
+  ::selection{background:var(--ember); color:var(--char);}
+
+  h1,h2,h3{font-family:var(--display); font-weight:400; letter-spacing:0.5px; line-height:1.1; margin:0 0 0.5em;}
+  .eyebrow{
+    font-family:var(--mono); text-transform:uppercase; letter-spacing:2px;
+    font-size:0.75rem; color:var(--ember); margin-bottom:0.75em; display:flex; align-items:center; gap:8px;
+  }
+  .eyebrow::before{content:""; width:18px; height:2px; background:var(--ember); display:inline-block;}
+
+  button{font-family:var(--body); cursor:pointer;}
+  :focus-visible{outline:2px solid var(--amber); outline-offset:2px;}
+
+  /* ---------- NAV ---------- */
+  header.topnav{
+    position:sticky; top:0; z-index:50;
+    background:rgba(23,18,15,0.92); backdrop-filter:blur(6px);
+    border-bottom:1px solid var(--ember-dim);
+    display:flex; align-items:center; justify-content:space-between;
+    padding:14px 24px;
+  }
+  .brand{display:flex; align-items:center; gap:10px; font-family:var(--display); font-size:1.1rem; letter-spacing:0.5px;}
+  .brand .mark{width:12px; height:12px; background:var(--ember); border-radius:50% 50% 50% 0; transform:rotate(45deg); box-shadow:0 0 12px var(--ember);}
+  nav.tabs{display:flex; gap:6px;}
+  nav.tabs button{
+    background:none; border:1px solid transparent; color:var(--ash);
+    font-family:var(--mono); font-size:0.8rem; text-transform:uppercase; letter-spacing:1px;
+    padding:8px 14px; border-radius:var(--radius); transition:all .15s ease;
+  }
+  nav.tabs button:hover{color:var(--smoke);}
+  nav.tabs button.active{color:var(--char); background:var(--ember); font-weight:600;}
+
+  /* ---------- HERO ---------- */
+  .hero{
+    position:relative; overflow:hidden;
+    padding:90px 24px 70px;
+    border-bottom:1px solid var(--ember-dim);
+  }
+  #emberCanvas{position:absolute; inset:0; width:100%; height:100%; z-index:0;}
+  .hero-inner{position:relative; z-index:1; max-width:920px; margin:0 auto; text-align:left;}
+  .hero h1{font-size:clamp(2.4rem, 6vw, 4.4rem); max-width:14ch;}
+  .hero h1 .hl{color:var(--ember);}
+  .hero p.lede{max-width:56ch; color:var(--ash); font-size:1.1rem; margin-top:14px;}
+  .hero-cta{display:flex; gap:12px; margin-top:30px; flex-wrap:wrap;}
+  .btn{
+    display:inline-flex; align-items:center; gap:8px;
+    padding:12px 20px; border-radius:var(--radius); font-weight:600; font-size:0.95rem;
+    border:1px solid var(--ember); text-decoration:none; transition:transform .12s ease, background .12s ease;
+  }
+  .btn-primary{background:var(--ember); color:var(--char);}
+  .btn-primary:hover{transform:translateY(-2px); background:var(--amber);}
+  .btn-ghost{background:none; color:var(--smoke); border-color:var(--ash-dim);}
+  .btn-ghost:hover{border-color:var(--amber); color:var(--amber); transform:translateY(-2px);}
+
+  /* Danger meter */
+  .meter-card{
+    margin-top:40px; max-width:420px; background:var(--char-2); border:1px solid var(--ember-dim);
+    border-radius:var(--radius); padding:18px 20px;
+  }
+  .meter-card .label{font-family:var(--mono); font-size:0.7rem; text-transform:uppercase; letter-spacing:1.5px; color:var(--ash);}
+  .meter-bar{height:10px; background:var(--char); border-radius:6px; overflow:hidden; margin:10px 0 8px; border:1px solid var(--ember-dim);}
+  .meter-fill{height:100%; background:linear-gradient(90deg, var(--safe), var(--amber), var(--danger)); width:62%;}
+  .meter-scale{display:flex; justify-content:space-between; font-family:var(--mono); font-size:0.65rem; color:var(--ash-dim);}
+  .meter-note{font-size:0.75rem; color:var(--ash-dim); margin-top:10px;}
+
+  /* ---------- SECTIONS ---------- */
+  main section{padding:70px 24px; max-width:1100px; margin:0 auto;}
+  section.panel{display:none;}
+  section.panel.active{display:block; animation:fadeIn .35s ease;}
+  @keyframes fadeIn{from{opacity:0; transform:translateY(8px);} to{opacity:1; transform:translateY(0);}}
+
+  .section-head{max-width:640px; margin-bottom:40px;}
+  .section-head h2{font-size:clamp(1.7rem,3.4vw,2.4rem);}
+  .section-head p{color:var(--ash);}
+
+  /* ---------- FACTS ---------- */
+  .fact-grid{display:grid; grid-template-columns:repeat(auto-fit, minmax(250px,1fr)); gap:1px; background:var(--ember-dim); border:1px solid var(--ember-dim);}
+  .fact-card{background:var(--char); padding:26px; transition:background .15s ease;}
+  .fact-card:hover{background:var(--char-2);}
+  .fact-card .num{font-family:var(--mono); color:var(--ember); font-size:0.8rem; margin-bottom:10px; display:block;}
+  .fact-card h3{font-size:1.4rem; font-family:var(--body); font-weight:700; margin-bottom:8px;}
+  .fact-card p{color:var(--ash); font-size:0.92rem; margin:0;}
+
+  .stat-strip{
+    margin-top:60px; display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:24px;
+    border-top:1px solid var(--ember-dim); border-bottom:1px solid var(--ember-dim); padding:30px 0;
+  }
+  .stat{text-align:left;}
+  .stat .big{font-family:var(--mono); font-size:2.2rem; color:var(--amber); font-weight:600; display:block;}
+  .stat .cap{color:var(--ash); font-size:0.8rem; text-transform:uppercase; letter-spacing:1px;}
+
+  .triangle-wrap{margin-top:60px; display:grid; grid-template-columns:1fr 1fr; gap:40px; align-items:center;}
+  @media(max-width:760px){.triangle-wrap{grid-template-columns:1fr;}}
+  .triangle-list .t-item{display:flex; gap:16px; padding:16px 0; border-bottom:1px solid var(--ember-dim);}
+  .triangle-list .t-item:last-child{border-bottom:none;}
+  .t-icon{width:36px; height:36px; flex:none; border-radius:50%; background:var(--ember-dim); display:flex; align-items:center; justify-content:center; font-family:var(--mono); color:var(--amber); font-size:0.85rem;}
+  .t-item h4{margin:0 0 4px; font-family:var(--body); font-weight:700;}
+  .t-item p{margin:0; color:var(--ash); font-size:0.9rem;}
+
+  /* ---------- MAP / REPORT ---------- */
+  .map-disclaimer{
+    background:var(--ember-dim); border-left:3px solid var(--danger); padding:14px 18px; border-radius:var(--radius);
+    margin-bottom:24px; font-size:0.9rem;
+  }
+  .map-disclaimer strong{color:var(--amber);}
+  .map-layout{display:grid; grid-template-columns:1fr 340px; gap:20px;}
+  @media(max-width:860px){.map-layout{grid-template-columns:1fr;}}
+  #reportMap{height:520px; width:100%; border-radius:var(--radius); border:1px solid var(--ember-dim); filter:saturate(0.85) brightness(0.95);}
+  .map-side{background:var(--char-2); border:1px solid var(--ember-dim); border-radius:var(--radius); padding:20px; display:flex; flex-direction:column; gap:16px;}
+  .map-side h3{font-size:1.05rem; margin:0;}
+  .map-side .hint{font-size:0.82rem; color:var(--ash); margin:-8px 0 0;}
+  .field label{display:block; font-family:var(--mono); font-size:0.7rem; text-transform:uppercase; letter-spacing:1px; color:var(--ash); margin-bottom:6px;}
+  .field select, .field textarea, .field input{
+    width:100%; background:var(--char); border:1px solid var(--ash-dim); color:var(--smoke);
+    padding:9px 10px; border-radius:var(--radius); font-family:var(--body); font-size:0.9rem;
+  }
+  .field textarea{resize:vertical; min-height:70px;}
+  .coord-readout{font-family:var(--mono); font-size:0.8rem; color:var(--amber); background:var(--char); padding:8px 10px; border-radius:var(--radius); border:1px solid var(--ember-dim);}
+  .submit-row{display:flex; gap:10px;}
+  .submit-row .btn{flex:1; justify-content:center; border:1px solid var(--ember);}
+  #reportStatus{font-size:0.8rem; min-height:1em;}
+  #reportStatus.ok{color:var(--safe);}
+  #reportStatus.err{color:var(--danger);}
+
+  .report-log{margin-top:26px;}
+  .report-log h3{font-size:1.1rem;}
+  .log-item{
+    display:flex; justify-content:space-between; gap:12px; padding:12px 14px; background:var(--char-2);
+    border:1px solid var(--ember-dim); border-radius:var(--radius); margin-bottom:8px; font-size:0.85rem;
+  }
+  .log-item .sev{font-family:var(--mono); font-size:0.7rem; padding:2px 8px; border-radius:20px; height:fit-content;}
+  .sev-low{background:rgba(76,175,125,0.15); color:var(--safe);}
+  .sev-med{background:rgba(255,184,77,0.15); color:var(--amber);}
+  .sev-high{background:rgba(193,39,45,0.18); color:var(--danger);}
+  .log-empty{color:var(--ash-dim); font-size:0.85rem; font-style:italic;}
+
+  /* ---------- GAME ---------- */
+  .game-wrap{display:grid; grid-template-columns:1fr 280px; gap:24px;}
+  @media(max-width:860px){.game-wrap{grid-template-columns:1fr;}}
+  .game-board-outer{background:var(--char-2); border:1px solid var(--ember-dim); border-radius:var(--radius); padding:16px;}
+  #gameCanvas{width:100%; height:auto; display:block; border-radius:var(--radius); cursor:crosshair; background:#0d0a08;}
+  .game-hud{display:flex; flex-wrap:wrap; gap:14px; margin-top:14px; font-family:var(--mono); font-size:0.8rem;}
+  .hud-chip{background:var(--char); border:1px solid var(--ember-dim); border-radius:var(--radius); padding:8px 12px;}
+  .hud-chip .k{color:var(--ash); display:block; font-size:0.65rem; text-transform:uppercase; letter-spacing:1px;}
+  .hud-chip .v{color:var(--amber); font-size:1rem;}
+  .water-track{height:10px; background:var(--char); border:1px solid var(--ember-dim); border-radius:6px; overflow:hidden; margin-top:6px;}
+  .water-fill{height:100%; background:linear-gradient(90deg,#2f8fd8,#7fd0ff); width:100%; transition:width .15s ease;}
+
+  .game-side{display:flex; flex-direction:column; gap:16px;}
+  .game-card{background:var(--char-2); border:1px solid var(--ember-dim); border-radius:var(--radius); padding:18px;}
+  .game-card h3{font-size:1rem; margin-bottom:10px;}
+  .game-card p{font-size:0.85rem; color:var(--ash); margin:0 0 8px;}
+  .game-card ul{margin:0; padding-left:18px; color:var(--ash); font-size:0.85rem;}
+  .game-card ul li{margin-bottom:4px;}
+  #gameOverlay{
+    position:relative;
+  }
+  #gameMessage{
+    position:absolute; inset:0; display:none; align-items:center; justify-content:center; flex-direction:column; gap:14px;
+    background:rgba(10,7,5,0.88); border-radius:var(--radius); text-align:center; padding:20px;
+  }
+  #gameMessage h3{font-size:1.6rem;}
+  #gameMessage p{color:var(--ash); max-width:34ch;}
+
+  /* ---------- FOOTER ---------- */
+  footer{
+    border-top:1px solid var(--ember-dim); padding:30px 24px; text-align:center;
+    color:var(--ash-dim); font-size:0.8rem; font-family:var(--mono);
+  }
+  footer a{color:var(--ash-dim);}
+
+  @media (prefers-reduced-motion: reduce){
+    html{scroll-behavior:auto;}
+    *{animation-duration:0.001ms !important; transition-duration:0.001ms !important;}
+  }
+</style>
+</head>
+<body>
+
+<header class="topnav">
+  <div class="brand"><span class="mark"></span> Ember Watch</div>
+  <nav class="tabs">
+    <button data-target="facts" class="active">Facts</button>
+    <button data-target="report">Report</button>
+    <button data-target="game">Response Sim</button>
+  </nav>
+</header>
+
+<section class="hero">
+  <canvas id="emberCanvas"></canvas>
+  <div class="hero-inner">
+    <div class="eyebrow">Wildfire awareness</div>
+    <h1>Every fire starts <span class="hl">small</span> — and every minute counts.</h1>
+    <p class="lede">Understand how wildfires actually behave, flag one anonymously on the community map, or step into a short simulation and see how fast a fireline can get away from you.</p>
+    <div class="hero-cta">
+      <a href="#" class="btn btn-primary" data-jump="report">Report a fire</a>
+      <a href="#" class="btn btn-ghost" data-jump="game">Play the response sim</a>
+    </div>
+
+    <div class="meter-card">
+      <div class="label">Illustrative fire-weather index</div>
+      <div class="meter-bar"><div class="meter-fill" id="dangerFill"></div></div>
+      <div class="meter-scale"><span>Low</span><span>Moderate</span><span>High</span><span>Extreme</span></div>
+      <p class="meter-note">Sample gauge for demonstration — not a live feed. For real conditions, check your local fire authority.</p>
+    </div>
+  </div>
+</section>
+
+<main>
+
+  <!-- ===================== FACTS ===================== -->
+  <section class="panel active" id="facts">
+    <div class="section-head">
+      <div class="eyebrow">The basics</div>
+      <h2>How wildfires start, spread, and stop</h2>
+      <p>A working knowledge of fire behavior is the difference between noticing something early and finding out too late.</p>
+    </div>
+
+    <div class="fact-grid">
+      <div class="fact-card"><span class="num">01</span><h3>Most are human-caused</h3><p>Globally and in the U.S., the large majority of wildfires are started by people — downed power lines, unattended campfires, equipment sparks, arson, and discarded cigarettes — rather than lightning.</p></div>
+      <div class="fact-card"><span class="num">02</span><h3>Wind drives the spread</h3><p>Fire creates its own wind by pulling in air to feed combustion, and that inflow, combined with ambient wind, can push flame fronts forward far faster than a person can run uphill.</p></div>
+      <div class="fact-card"><span class="num">03</span><h3>Fire can outrun you</h3><p>Under strong wind and dry fuel, a grass fire can move faster than 6–7 mph — well beyond a brisk human jogging pace on uneven terrain.</p></div>
+      <div class="fact-card"><span class="num">04</span><h3>Embers travel ahead of the fire</h3><p>Burning embers can be lofted a mile or more downwind of the main fire, starting new "spot fires" well before the visible front arrives.</p></div>
+      <div class="fact-card"><span class="num">05</span><h3>Dry fuel is the real accelerant</h3><p>Drought-cured grass, dead brush, and low humidity matter more than temperature alone — they determine how readily a spark becomes a sustained fire.</p></div>
+      <div class="fact-card"><span class="num">06</span><h3>Some ecosystems need fire</h3><p>Many forests and grasslands evolved with periodic natural fire; certain seed cones only open under intense heat, and controlled burns are used deliberately to reduce future fuel loads.</p></div>
+      <div class="fact-card"><span class="num">07</span><h3>Smoke is a health hazard far from the flames</h3><p>Fine particulate smoke can travel hundreds of miles and worsen respiratory and cardiovascular conditions long after the fire itself has passed.</p></div>
+      <div class="fact-card"><span class="num">08</span><h3>The first minutes matter most</h3><p>A fire the size of a wastebasket can often be stopped with a bucket of water or an extinguisher — the same fire, ten minutes later, may need an entire crew.</p></div>
+    </div>
+
+    <div class="stat-strip">
+      <div class="stat"><span class="big">3</span><span class="cap">Elements of the fire triangle</span></div>
+      <div class="stat"><span class="big">&lt;1mi</span><span class="cap">Typical ember spotting distance</span></div>
+      <div class="stat"><span class="big">6–7mph</span><span class="cap">Grass fire spread in strong wind</span></div>
+      <div class="stat"><span class="big">~90%</span><span class="cap">Of U.S. wildfires that are human-caused</span></div>
+    </div>
+
+    <div class="triangle-wrap">
+      <div>
+        <div class="eyebrow">Fire triangle</div>
+        <h3 style="font-family:var(--body); font-weight:700; font-size:1.3rem;">Remove one side, the fire stops</h3>
+        <p style="color:var(--ash); font-size:0.9rem;">Every flame needs all three of the following at once. Firefighting is mostly about taking one of them away — that's also exactly what the response simulation asks you to do.</p>
+      </div>
+      <div class="triangle-list">
+        <div class="t-item"><div class="t-icon">01</div><div><h4>Fuel</h4><p>Anything combustible — dry grass, brush, timber, structures.</p></div></div>
+        <div class="t-item"><div class="t-icon">02</div><div><h4>Heat</h4><p>An ignition source hot enough to start combustion and sustain it.</p></div></div>
+        <div class="t-item"><div class="t-icon">03</div><div><h4>Oxygen</h4><p>Ambient air feeding the chemical reaction — wind accelerates this.</p></div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== REPORT / MAP ===================== -->
+  <section class="panel" id="report">
+    <div class="section-head">
+      <div class="eyebrow">Community map</div>
+      <h2>Report a wildfire sighting anonymously</h2>
+      <p>Drop a pin where you saw smoke or flame and add a few details. No name, email, or account required.</p>
+    </div>
+
+    <div class="map-disclaimer">
+      <strong>This is not an emergency service.</strong> If you or anyone else is in danger, call your local emergency number (911 in the US) immediately. This map is a community awareness tool and reports are stored only in your own browser for this demo — they are not transmitted anywhere.
+    </div>
+
+    <div class="map-layout">
+      <div id="reportMap"></div>
+
+      <div class="map-side">
+        <div>
+          <h3>New report</h3>
+          <p class="hint">Click anywhere on the map to place a marker, then fill in what you saw.</p>
+        </div>
+
+        <div class="coord-readout" id="coordReadout">No location selected yet</div>
+
+        <div class="field">
+          <label for="severity">Estimated severity</label>
+          <select id="severity">
+            <option value="low">Low — light smoke, no visible flame</option>
+            <option value="med">Medium — visible flame, contained area</option>
+            <option value="high">High — actively spreading</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label for="details">What did you see?</label>
+          <textarea id="details" placeholder="e.g. smoke rising from the ridge near the trailhead, no flame visible yet"></textarea>
+        </div>
+
+        <div class="submit-row">
+          <button class="btn btn-primary" id="submitReport">Submit report</button>
+          <button class="btn btn-ghost" id="clearPin">Clear pin</button>
+        </div>
+        <div id="reportStatus"></div>
+      </div>
+    </div>
+
+    <div class="report-log">
+      <h3>Recent reports (this browser)</h3>
+      <div id="logList"><p class="log-empty">No reports yet — submitted reports will appear here.</p></div>
+    </div>
+  </section>
+
+  <!-- ===================== GAME ===================== -->
+  <section class="panel" id="game">
+    <div class="section-head">
+      <div class="eyebrow">Response simulation</div>
+      <h2>Put it out before it spreads</h2>
+      <p>Click a burning cell to douse it. Fire spreads to dry neighboring cells every couple of seconds, and your water tank needs a moment to refill after each use.</p>
+    </div>
+
+    <div class="game-wrap">
+      <div class="game-board-outer">
+        <div id="gameOverlay">
+          <canvas id="gameCanvas" width="760" height="480"></canvas>
+          <div id="gameMessage">
+            <h3 id="gameMsgTitle">Forest lost</h3>
+            <p id="gameMsgBody">More than half the grid burned before you could contain it.</p>
+            <button class="btn btn-primary" id="restartBtn">Try again</button>
+          </div>
+        </div>
+        <div class="game-hud">
+          <div class="hud-chip"><span class="k">Score</span><span class="v" id="hudScore">0</span></div>
+          <div class="hud-chip"><span class="k">Time</span><span class="v" id="hudTime">60s</span></div>
+          <div class="hud-chip"><span class="k">Burned</span><span class="v" id="hudBurned">0%</span></div>
+          <div class="hud-chip" style="min-width:140px;">
+            <span class="k">Water</span>
+            <div class="water-track"><div class="water-fill" id="waterFill"></div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="game-side">
+        <div class="game-card">
+          <h3>How it works</h3>
+          <ul>
+            <li>Click any orange (burning) tile to extinguish it.</li>
+            <li>Each douse costs water; the tank refills automatically.</li>
+            <li>Every ~1.8s, burning tiles have a chance to ignite dry neighbors.</li>
+            <li>Green tiles are unburned fuel, black tiles are already burned out.</li>
+            <li>Survive 60 seconds with less than half the grid burned to win.</li>
+          </ul>
+        </div>
+        <div class="game-card">
+          <h3>Why this mirrors real triage</h3>
+          <p>Real crews prioritize the fires most likely to spread to more fuel, not just the biggest flame. Try to douse the leading edge instead of chasing whichever tile lit up last.</p>
+        </div>
+        <button class="btn btn-ghost" id="startBtn" style="justify-content:center;">Start / restart simulation</button>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  Ember Watch — a static demo site. Reports and scores are stored locally in your browser only.
+  <br>Not affiliated with any emergency service. In an emergency, always call your local authorities.
+</footer>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script>
+/* =========================================================
+   NAV / TAB SWITCHING
+========================================================= */
+const tabButtons = document.querySelectorAll('nav.tabs button');
+const panels = document.querySelectorAll('section.panel');
+
+function showPanel(name){
+  panels.forEach(p => p.classList.toggle('active', p.id === name));
+  tabButtons.forEach(b => b.classList.toggle('active', b.dataset.target === name));
+  if(name === 'report') setTimeout(() => { if(reportMap) reportMap.invalidateSize(); }, 50);
+}
+
+tabButtons.forEach(b => b.addEventListener('click', () => showPanel(b.dataset.target)));
+document.querySelectorAll('[data-jump]').forEach(el => {
+  el.addEventListener('click', (e) => { e.preventDefault(); showPanel(el.dataset.jump); });
+});
+
+/* =========================================================
+   HERO — ember particle canvas
+========================================================= */
+const emberCanvas = document.getElementById('emberCanvas');
+const ectx = emberCanvas.getContext('2d');
+let embers = [];
+const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+function resizeEmberCanvas(){
+  const hero = emberCanvas.parentElement;
+  emberCanvas.width = hero.clientWidth;
+  emberCanvas.height = hero.clientHeight;
+}
+resizeEmberCanvas();
+window.addEventListener('resize', resizeEmberCanvas);
+
+function spawnEmber(){
+  return {
+    x: Math.random() * emberCanvas.width,
+    y: emberCanvas.height + 10,
+    r: 1 + Math.random() * 2.4,
+    speed: 0.4 + Math.random() * 1.1,
+    drift: (Math.random() - 0.5) * 0.6,
+    life: 0,
+    maxLife: 300 + Math.random() * 300,
+    hue: Math.random() > 0.5 ? '255,90,31' : '255,184,77'
+  };
+}
+for(let i=0;i<60;i++) embers.push(Object.assign(spawnEmber(), {y: Math.random()*emberCanvas.height}));
+
+function animateEmbers(){
+  ectx.clearRect(0,0,emberCanvas.width, emberCanvas.height);
+  embers.forEach(e => {
+    e.y -= e.speed;
+    e.x += e.drift + Math.sin(e.life*0.02)*0.3;
+    e.life++;
+    const fade = 1 - (e.life / e.maxLife);
+    ectx.beginPath();
+    ectx.arc(e.x, e.y, e.r, 0, Math.PI*2);
+    ectx.fillStyle = `rgba(${e.hue}, ${Math.max(fade,0)*0.8})`;
+    ectx.shadowColor = `rgba(${e.hue},0.8)`;
+    ectx.shadowBlur = 6;
+    ectx.fill();
+  });
+  embers = embers.filter(e => e.life < e.maxLife && e.y > -10);
+  while(embers.length < 60) embers.push(spawnEmber());
+  if(!reduceMotion) requestAnimationFrame(animateEmbers);
+}
+if(!reduceMotion) requestAnimationFrame(animateEmbers);
+else { embers.forEach(e=>{ectx.beginPath();ectx.arc(e.x,e.y,e.r,0,Math.PI*2);ectx.fillStyle=`rgba(${e.hue},0.5)`;ectx.fill();}); }
+
+/* Danger meter — illustrative, randomized once per load */
+document.getElementById('dangerFill').style.width = (40 + Math.random()*45).toFixed(0) + '%';
+
+/* =========================================================
+   REPORT MAP (Leaflet + localStorage, fully client-side)
+========================================================= */
+let reportMap, activeMarker = null, activeLatLng = null;
+
+function initReportMap(){
+  reportMap = L.map('reportMap', { worldCopyJump:true }).setView([37.8, -119.4], 6);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; OpenStreetMap contributors',
+    maxZoom: 17
+  }).addTo(reportMap);
+
+  reportMap.on('click', (e) => {
+    activeLatLng = e.latlng;
+    if(activeMarker) reportMap.removeLayer(activeMarker);
+    activeMarker = L.circleMarker(e.latlng, {
+      radius: 9, color:'#ff5a1f', weight:2, fillColor:'#ffb84d', fillOpacity:0.85
+    }).addTo(reportMap);
+    document.getElementById('coordReadout').textContent =
+      `${e.latlng.lat.toFixed(4)}, ${e.latlng.lng.toFixed(4)}`;
+  });
+
+  loadReportsFromStorage();
+}
+
+const REPORTS_KEY = 'emberwatch_reports_v1';
+
+function getStoredReports(){
+  try { return JSON.parse(localStorage.getItem(REPORTS_KEY)) || []; }
+  catch(e){ return []; }
+}
+function saveStoredReports(list){
+  localStorage.setItem(REPORTS_KEY, JSON.stringify(list));
+}
+
+function sevLabel(sev){
+  return sev === 'high' ? ['High','sev-high'] : sev === 'med' ? ['Medium','sev-med'] : ['Low','sev-low'];
+}
+
+function loadReportsFromStorage(){
+  const reports = getStoredReports();
+  reports.forEach(r => addMarkerForReport(r));
+  renderLog();
+}
+
+function addMarkerForReport(r){
+  const color = r.severity === 'high' ? '#c1272d' : r.severity === 'med' ? '#ffb84d' : '#4caf7d';
+  L.circleMarker([r.lat, r.lng], { radius:7, color, weight:2, fillColor:color, fillOpacity:0.6 })
+    .addTo(reportMap)
+    .bindPopup(`<strong>${sevLabel(r.severity)[0]} severity</strong><br>${escapeHtml(r.details || 'No details provided')}<br><em>${new Date(r.ts).toLocaleString()}</em>`);
+}
+
+function escapeHtml(str){
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+function renderLog(){
+  const reports = getStoredReports().slice().reverse();
+  const logList = document.getElementById('logList');
+  if(reports.length === 0){
+    logList.innerHTML = '<p class="log-empty">No reports yet — submitted reports will appear here.</p>';
+    return;
+  }
+  logList.innerHTML = reports.map(r => {
+    const [label, cls] = sevLabel(r.severity);
+    return `<div class="log-item">
+      <div>
+        <div>${escapeHtml(r.details || 'No details provided')}</div>
+        <div style="color:var(--ash-dim); font-size:0.75rem; margin-top:4px;">${r.lat.toFixed(3)}, ${r.lng.toFixed(3)} · ${new Date(r.ts).toLocaleString()}</div>
+      </div>
+      <span class="sev ${cls}">${label}</span>
+    </div>`;
+  }).join('');
+}
+
+document.getElementById('submitReport').addEventListener('click', () => {
+  const statusEl = document.getElementById('reportStatus');
+  if(!activeLatLng){
+    statusEl.textContent = 'Click on the map first to place a pin.';
+    statusEl.className = 'err';
+    return;
+  }
+  const severity = document.getElementById('severity').value;
+  const details = document.getElementById('details').value.trim();
+
+  const report = {
+    lat: activeLatLng.lat,
+    lng: activeLatLng.lng,
+    severity,
+    details,
+    ts: Date.now()
+  };
+  const reports = getStoredReports();
+  reports.push(report);
+  saveStoredReports(reports);
+
+  addMarkerForReport(report);
+  renderLog();
+
+  statusEl.textContent = 'Report submitted anonymously — thank you.';
+  statusEl.className = 'ok';
+
+  if(activeMarker) reportMap.removeLayer(activeMarker);
+  activeMarker = null; activeLatLng = null;
+  document.getElementById('coordReadout').textContent = 'No location selected yet';
+  document.getElementById('details').value = '';
+});
+
+document.getElementById('clearPin').addEventListener('click', () => {
+  if(activeMarker) reportMap.removeLayer(activeMarker);
+  activeMarker = null; activeLatLng = null;
+  document.getElementById('coordReadout').textContent = 'No location selected yet';
+  document.getElementById('reportStatus').textContent = '';
+});
+
+initReportMap();
+
+/* =========================================================
+   GAME — grid wildfire response simulation
+========================================================= */
+const COLS = 19, ROWS = 12;
+const canvas = document.getElementById('gameCanvas');
+const gctx = canvas.getContext('2d');
+let cellW, cellH;
+
+const STATE = { DRY:0, BURNING:1, BURNED:2, WET:3 };
+let grid = [];
+let gameRunning = false;
+let score = 0;
+let timeLeft = 60;
+let water = 100;
+const WATER_COST = 18;
+const WATER_REGEN = 9; // per second
+let lastSpreadTime = 0;
+const SPREAD_INTERVAL = 1800;
+let lastTickTime = 0;
+let rafId = null;
+
+function sizeCanvas(){
+  const outer = canvas.parentElement.getBoundingClientRect();
+  const cssWidth = Math.min(outer.width - 32, 900);
+  canvas.style.width = cssWidth + 'px';
+  canvas.style.height = (cssWidth * (ROWS/COLS)) + 'px';
+  cellW = canvas.width / COLS;
+  cellH = canvas.height / ROWS;
+}
+sizeCanvas();
+window.addEventListener('resize', sizeCanvas);
+
+function newGrid(){
+  const g = [];
+  for(let r=0;r<ROWS;r++){
+    const row = [];
+    for(let c=0;c<COLS;c++) row.push(STATE.DRY);
+    g.push(row);
+  }
+  // seed 3 ignition points
+  for(let i=0;i<3;i++){
+    const r = Math.floor(Math.random()*ROWS);
+    const c = Math.floor(Math.random()*COLS);
+    g[r][c] = STATE.BURNING;
+  }
+  return g;
+}
+
+function drawGrid(){
+  gctx.clearRect(0,0,canvas.width, canvas.height);
+  for(let r=0;r<ROWS;r++){
+    for(let c=0;c<COLS;c++){
+      const x = c*cellW, y = r*cellH;
+      let fill;
+      switch(grid[r][c]){
+        case STATE.DRY: fill = '#2c4a2e'; break;
+        case STATE.BURNING: fill = '#ff5a1f'; break;
+        case STATE.BURNED: fill = '#160f0c'; break;
+        case STATE.WET: fill = '#1c3a52'; break;
+      }
+      gctx.fillStyle = fill;
+      gctx.fillRect(x, y, cellW-1.5, cellH-1.5);
+      if(grid[r][c] === STATE.BURNING){
+        gctx.fillStyle = 'rgba(255,184,77,0.5)';
+        const pulse = 2 + Math.sin(Date.now()/150 + r + c) * 2;
+        gctx.beginPath();
+        gctx.arc(x+cellW/2, y+cellH/2, Math.max(cellW,cellH)/4 + pulse, 0, Math.PI*2);
+        gctx.fill();
+      }
+    }
+  }
+}
+
+function countBurned(){
+  let burned = 0, total = ROWS*COLS;
+  for(let r=0;r<ROWS;r++) for(let c=0;c<COLS;c++) if(grid[r][c]===STATE.BURNED || grid[r][c]===STATE.BURNING) burned++;
+  return burned/total;
+}
+
+function spreadFire(){
+  const next = grid.map(row => row.slice());
+  for(let r=0;r<ROWS;r++){
+    for(let c=0;c<COLS;c++){
+      if(grid[r][c] === STATE.BURNING){
+        next[r][c] = STATE.BURNED; // burns out after spreading once
+        const neighbors = [[r-1,c],[r+1,c],[r,c-1],[r,c+1]];
+        neighbors.forEach(([nr,nc]) => {
+          if(nr>=0 && nr<ROWS && nc>=0 && nc<COLS && grid[nr][nc] === STATE.DRY){
+            if(Math.random() < 0.55) next[nr][nc] = STATE.BURNING;
+          }
+        });
+      }
+    }
+  }
+  grid = next;
+}
+
+function updateHud(){
+  document.getElementById('hudScore').textContent = score;
+  document.getElementById('hudTime').textContent = Math.max(0,Math.ceil(timeLeft)) + 's';
+  document.getElementById('hudBurned').textContent = Math.round(countBurned()*100) + '%';
+  document.getElementById('waterFill').style.width = Math.max(0,water) + '%';
+}
+
+function endGame(win){
+  gameRunning = false;
+  cancelAnimationFrame(rafId);
+  const msg = document.getElementById('gameMessage');
+  document.getElementById('gameMsgTitle').textContent = win ? 'Fire contained' : 'Forest lost';
+  document.getElementById('gameMsgBody').textContent = win
+    ? `You held the line — final score ${score}, ${Math.round(countBurned()*100)}% burned.`
+    : `Over half the grid burned before containment. Final score ${score}.`;
+  msg.style.display = 'flex';
+}
+
+canvas.addEventListener('click', (e) => {
+  if(!gameRunning) return;
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = canvas.width / rect.width;
+  const scaleY = canvas.height / rect.height;
+  const x = (e.clientX - rect.left) * scaleX;
+  const y = (e.clientY - rect.top) * scaleY;
+  const c = Math.floor(x / cellW);
+  const r = Math.floor(y / cellH);
+  if(r<0||r>=ROWS||c<0||c>=COLS) return;
+
+  if(grid[r][c] === STATE.BURNING){
+    if(water < WATER_COST){ return; }
+    grid[r][c] = STATE.WET;
+    water -= WATER_COST;
+    score += 10;
+  }
+});
+
+function loop(ts){
+  if(!gameRunning) return;
+  if(!lastTickTime) lastTickTime = ts;
+  const dt = (ts - lastTickTime) / 1000;
+  lastTickTime = ts;
+
+  timeLeft -= dt;
+  water = Math.min(100, water + WATER_REGEN*dt);
+
+  if(ts - lastSpreadTime > SPREAD_INTERVAL){
+    spreadFire();
+    lastSpreadTime = ts;
+  }
+
+  drawGrid();
+  updateHud();
+
+  const burnedPct = countBurned();
+  if(timeLeft <= 0){
+    endGame(burnedPct < 0.5);
+    return;
+  }
+  if(burnedPct >= 0.8){
+    endGame(false);
+    return;
+  }
+  rafId = requestAnimationFrame(loop);
+}
+
+function startGame(){
+  grid = newGrid();
+  score = 0;
+  timeLeft = 60;
+  water = 100;
+  lastSpreadTime = 0;
+  lastTickTime = 0;
+  gameRunning = true;
+  document.getElementById('gameMessage').style.display = 'none';
+  sizeCanvas();
+  drawGrid();
+  updateHud();
+  rafId = requestAnimationFrame(loop);
+}
+
+document.getElementById('startBtn').addEventListener('click', startGame);
+document.getElementById('restartBtn').addEventListener('click', startGame);
+
+// initial static render before first start
+grid = newGrid();
+sizeCanvas();
+drawGrid();
+updateHud();
+</script>
+</body>
+</html>
