@@ -1,2 +1,2 @@
-Ember Watch
+Ember Watch:
 Report, learn, preserve.
